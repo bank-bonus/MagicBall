@@ -159,7 +159,8 @@
 
     /* --- CONTROLS --- */
     .question-box {
-      margin-bottom: 40px;
+      /* Увеличил отступ снизу до 100px, чтобы баннер не перекрывал кнопки */
+      margin-bottom: 100px; 
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -250,7 +251,8 @@
     }
 
     .toast {
-      position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%);
+      position: fixed; bottom: 120px; /* Поднял чуть выше из-за баннера */
+      left: 50%; transform: translateX(-50%);
       background: rgba(20, 20, 20, 0.95); padding: 12px 24px; border-radius: 30px;
       color: white; font-size: 14px; pointer-events: none; opacity: 0; transition: opacity 0.3s; z-index: 200;
       border: 1px solid rgba(255,255,255,0.1);
@@ -375,7 +377,7 @@
   </div>
 
   <script>
-    // --- 1. РАСШИРЕННЫЕ ОТВЕТЫ ---
+    // --- 1. КОНСТАНТЫ И ДАННЫЕ ---
     const MODES = {
         normal: [
             "Бесспорно", "Предрешено", "Никаких сомнений", "Определённо да", "Можешь быть уверен",
@@ -402,7 +404,6 @@
         ]
     };
 
-    // Ответы на повторный вопрос
     const REPEAT_ANSWERS = [
         "Я уже отвечал!", "Не повторяйся", "Ответ тот же", "Склероз?", 
         "Спроси что-то новое", "Не спамь", "Один раз достаточно"
@@ -426,8 +427,6 @@
     let prankAnswer = null;
     let isAnimating = false;
     let attemptCounter = 0;
-    
-    // Переменная для хранения последнего вопроса
     let lastQuestion = "";
 
     // --- INIT ---
@@ -439,20 +438,42 @@
 
     window.addEventListener('load', () => {
         vkBridge.send('VKWebAppInit');
+        
+        // --- 1. ЗАПУСК БАННЕРА ---
+        showVkBanner();
+        // -------------------------
+
         loadState();
         checkPrankUrl();
         renderSkins();
-        // showAd(); // Можно раскомментировать для рекламы при входе
     });
 
-    // --- ЛОГИКА ---
+    // --- РЕКЛАМА ---
+    function showVkBanner() {
+        vkBridge.send('VKWebAppShowBannerAd', {
+            banner_location: 'bottom'
+        })
+        .then((data) => {
+            if (data.result) {
+               console.log('Баннер включен');
+            }
+        })
+        .catch((error) => {
+            console.log('Ошибка баннера:', error);
+        });
+    }
 
+    function showInterstitialAd() {
+        vkBridge.send('VKWebAppShowNativeAds', { ad_format: 'interstitial' })
+            .catch(e => console.log(e));
+    }
+
+    // --- ИГРОВАЯ ЛОГИКА ---
     function showAnswer() {
         if (isAnimating) return;
         
         const inputVal = questionInput.value.trim().toLowerCase();
         
-        // 1. ПУСТОЙ ВОПРОС
         if (inputVal === "") {
             showToast("Сначала введи вопрос!");
             questionInput.classList.add('shake-input');
@@ -461,15 +482,11 @@
             return; 
         }
 
-        // 2. ПРОВЕРКА НА ПОВТОР (Новая логика)
-        // Если это не пранк и вопрос совпадает с предыдущим
         if (!prankAnswer && inputVal === lastQuestion) {
-            // Выдаем отказ, но не трясем шар сильно
             showRefusal();
             return;
         }
 
-        // Сохраняем текущий вопрос как последний
         lastQuestion = inputVal;
 
         // Вибрация
@@ -479,44 +496,34 @@
         
         let finalAnswer = "";
         
-        // ПРОВЕРКА НА ПРАНК
         if (prankAnswer) {
             finalAnswer = prankAnswer;
             prankAnswer = null;
             showToast("Вас разыграли! 🤡");
             window.history.replaceState({}, document.title, window.location.pathname);
-        } 
-        // ПАСХАЛКИ
-        else if (inputVal.includes("дуров")) {
+        } else if (inputVal.includes("дуров")) {
             finalAnswer = "Верни стену!";
         } else if (inputVal.includes("вконтакте") || inputVal.includes("vk")) {
             finalAnswer = "Топ соцсеть 💙";
-        } 
-        // ОБЫЧНЫЙ РЕЖИМ
-        else {
+        } else {
             const answers = MODES[state.currentMode];
             finalAnswer = answers[Math.floor(Math.random() * answers.length)];
         }
 
-        // Реклама
+        // Показ межстраничной рекламы каждые 4 вопроса
         attemptCounter++;
-        if (attemptCounter % 4 === 0) showAd();
+        if (attemptCounter % 4 === 0) showInterstitialAd();
 
-        // Анимация
-        animateBall(finalAnswer, true); // true = даем опыт
+        animateBall(finalAnswer, true); 
     }
 
-    // Функция отказа отвечать (без начисления опыта и рекламы)
     function showRefusal() {
         if (isAnimating) return;
         isAnimating = true;
-        
-        // Легкая вибрация
         vkBridge.send("VKWebAppTapticImpactOccurred", {"style": "light"});
         questionInput.blur();
-
         const refusalText = REPEAT_ANSWERS[Math.floor(Math.random() * REPEAT_ANSWERS.length)];
-        animateBall(refusalText, false); // false = без опыта
+        animateBall(refusalText, false); 
     }
 
     function animateBall(text, giveXp) {
@@ -525,13 +532,10 @@
 
         setTimeout(() => {
             ball.classList.remove('vibrate');
-            
             answerEl.textContent = text;
             fitText(answerEl);
             answerEl.classList.add('show');
-            
             if (giveXp) addXP(1);
-
             isAnimating = false;
         }, 800);
     }
@@ -543,11 +547,6 @@
             fontSize--;
             el.style.fontSize = fontSize + 'px';
         }
-    }
-
-    function showAd() {
-        vkBridge.send('VKWebAppShowNativeAds', { ad_format: 'interstitial' })
-            .catch(e => console.log(e));
     }
 
     // --- ПРАНК ---
@@ -618,7 +617,7 @@
         closeModal('dailyModal');
     }
 
-    // --- SYSTEM ---
+    // --- СИСТЕМА ---
     function addXP(amount) {
         state.xp += amount;
         xpDisplay.textContent = state.xp;
@@ -702,7 +701,7 @@
     questionInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') showAnswer(); });
     ball.addEventListener('click', showAnswer);
 
-    // Stars gen
+    // Генерация звезд фона
     const starsContainer = document.querySelector('.stars');
     for (let i = 0; i < 60; i++) {
         const s = document.createElement('div');
@@ -714,4 +713,4 @@
     }
   </script>
 </body>
-</html>
+      </html>
